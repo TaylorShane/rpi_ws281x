@@ -3,6 +3,8 @@
 #
 # Direct port of the Arduino NeoPixel library strandtest example.  Showcases
 # various animations on a strip of NeoPixels.
+# https://github.com/rpi-ws281x/rpi-ws281x-python/tree/master
+# Showcases various animations on a strip of NeoPixels.
 import time
 
 from rpi_ws281x import Color, PixelStrip, ws

@@ -5,6 +5,8 @@
 # blue = minutes 1-5
 # green = seconds
 # (To run the program permanently and with autostart use systemd.)
+# https://github.com/rpi-ws281x/rpi-ws281x-python/tree/master
+# Showcases various animations on a strip of NeoPixels.
 
 import time
 import datetime

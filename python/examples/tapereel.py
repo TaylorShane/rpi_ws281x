@@ -8,6 +8,8 @@
 
 #wiring diagram https://tutorials-raspberrypi.de/wp-content/uploads/Raspberry-Pi-WS2812-Steckplatine-600x361.png
 
+# this program is designed for two BTF-LIGHTING brand WS2812B IC RGB LED Strips (DC5V 16.4FT 300LED 5050SMD Individually Addressable) model WS2812B5M60LB30
+
 import time
 from datetime import date
 from rpi_ws281x import *
@@ -231,6 +233,40 @@ def _color_from_tuple(rgb):
     r, g, b = rgb
     return Color(max(0, min(255, int(r))), max(0, min(255, int(g))), max(0, min(255, int(b))))
 
+
+def _tuple_from_color(color):
+    """Convert a packed Color value into an (r, g, b) tuple."""
+    return ((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+
+
+def smoothWipeToColor(strip, target_color, wait_ms=6, blend_steps=8):
+    """Wipe across the strip while blending each pixel from current color to target."""
+    blend_steps = max(1, int(blend_steps))
+    per_step_delay = (wait_ms / 1000.0) / blend_steps
+    target_r, target_g, target_b = _tuple_from_color(target_color)
+
+    for i in range(strip.numPixels()):
+        current_r, current_g, current_b = _tuple_from_color(strip.getPixelColor(i))
+        for step in range(1, blend_steps + 1):
+            t = step / float(blend_steps)
+            strip.setPixelColor(
+                i,
+                C(
+                    current_r + (target_r - current_r) * t,
+                    current_g + (target_g - current_g) * t,
+                    current_b + (target_b - current_b) * t,
+                ),
+            )
+            strip.show()
+            time.sleep(per_step_delay)
+
+
+def clear_strip():
+    """Turn off all pixels on the active strip."""
+    for i in range(strip.numPixels()):
+        strip.setPixelColor(i, Color(0, 0, 0))
+    strip.show()
+
 def spinningReels(strip, reel_pixels=None, lit_span=12, laps=2, wait_ms=8, reverse=False, accent=(255, 180, 60), frame_color=(5, 5, 5)):
     """Spin a warm block around the reel segment while keeping the cabinet softly lit."""
     total = strip.numPixels()
@@ -351,38 +387,22 @@ if __name__ == '__main__':
             print('Using default palette.')
 
         color_and_chase = [
-            (colorWipe, (RED,), {'wait_ms': 10}),
-            (theaterChase, (DEEP_RED,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChaseReverse, (DEEP_RED,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipeReverse, (BLUE,), {'wait_ms': 5}),
-            (colorWipe, (GOLD,), {'wait_ms': 10}),
-            (theaterChaseReverse, (GOLD,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (GOLD,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipeReverse, (PURPLE,), {'wait_ms': 5}),
             (colorWipe, (WHITE,), {'wait_ms': 10}),
-            (theaterChaseReverse, (WHITE,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipe, (BLUE,), {'wait_ms': 10}),
-            (theaterChaseReverse, (BLUE,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (BLUE,), {'wait_ms': 25, 'iterations': 50}),
+            (theaterChaseReverse, (WHITE,), {'wait_ms': 25, 'iterations': 25}),
+            (colorWipe, (GOLD,), {'wait_ms': 10}),
+            (theaterChase, (GOLD,), {'wait_ms': 25, 'iterations': 25}),
             (colorWipe, (AQUA,), {'wait_ms': 10}),
-            (theaterChase, (AQUA,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChaseReverse, (AQUA,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipe, (GREEN,), {'wait_ms': 10}),
-            (theaterChase, (DEEP_BLUE,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChaseReverse, (DEEP_RED,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipe, (PURPLE,), {'wait_ms': 10}),
-            (theaterChaseReverse, (PURPLE,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (PURPLE,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipe, (ORANGE,), {'wait_ms': 10}),
-            (theaterChase, (ORANGE,), {'wait_ms': 25, 'iterations': 50}),
-            (colorWipeReverse, (ORANGE,), {'wait_ms': 5}),
+            (theaterChase, (AQUA,), {'wait_ms': 25, 'iterations': 25}),
+            (theaterChaseReverse, (AQUA,), {'wait_ms': 25, 'iterations': 25}),
         ]
 
         theater_focus = [
-            (theaterChase, (WHITE,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (ORANGE,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (DEEP_RED,), {'wait_ms': 25, 'iterations': 50}),
-            (theaterChase, (DEEP_BLUE,), {'wait_ms': 25, 'iterations': 50}),
+            (smoothWipeToColor, (ORANGE,), {'wait_ms': 8, 'blend_steps': 8}),
+            (theaterChase, (ORANGE,), {'wait_ms': 25, 'iterations': 30}),
+            (smoothWipeToColor, (DEEP_RED,), {'wait_ms': 8, 'blend_steps': 8}),
+            (theaterChase, (DEEP_RED,), {'wait_ms': 25, 'iterations': 30}),
+            (smoothWipeToColor, (DEEP_BLUE,), {'wait_ms': 8, 'blend_steps': 8}),
+            (theaterChase, (DEEP_BLUE,), {'wait_ms': 25, 'iterations': 30}),
         ]
 
         rainbow_block = [
@@ -392,8 +412,8 @@ if __name__ == '__main__':
         ]
 
         reel_cabinet_block = [
-            (spinningReels, tuple(), {'lit_span': 14, 'laps': 2, 'wait_ms': 6, 'accent': (255, 200, 90), 'frame_color': (10, 10, 10)}),
-            (spliceRunner, tuple(), {'block_size': 12, 'wait_ms': 8, 'cycles': 2, 'head_color': (255, 80, 20), 'frame_color': (0, 160, 255)}),
+            (spinningReels, tuple(), {'lit_span': 28, 'laps': 2, 'wait_ms': 5, 'accent': (255, 200, 90), 'frame_color': (10, 10, 10)}),
+            (spliceRunner, tuple(), {'block_size': 28, 'wait_ms': 7, 'cycles': 2, 'head_color': (255, 80, 20), 'frame_color': (0, 160, 255)}),
             (cabinetPulse, tuple(), {'cycles': 2, 'step_ms': 12, 'frame_color': (0, 130, 255), 'floor_color': (0, 0, 12)}),
         ]
 
@@ -411,8 +431,16 @@ if __name__ == '__main__':
             _run_steps(strip, reel_cabinet_block)
 
     except KeyboardInterrupt:
-        if args.clear:
-            colorWipe(strip, Color(0,0,0), 10)
+        # Always clear on exit to leave strips off.
+        clear_strip()
 
 
+# ssh shane@pihole2
+# # copy updated tapereel.py to Pi
+# scp /d/shane/rpi_ws281x/python/examples/tapereel.py shane@pihole2:/home/shane/tapereel.py
 
+# # stop tapereel
+# sudo systemctl stop ledstrip.service 
+
+# # start tapereel
+# sudo systemctl start ledstrip.service

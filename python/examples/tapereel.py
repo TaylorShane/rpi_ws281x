@@ -239,26 +239,37 @@ def _tuple_from_color(color):
     return ((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
 
 
-def smoothWipeToColor(strip, target_color, wait_ms=6, blend_steps=8):
-    """Wipe across the strip while blending each pixel from current color to target."""
+def smoothWipeToColor(strip, target_color, wait_ms=0, blend_steps=12, pixels_per_step=12):
+    """Move a smooth transition front down the strip with fewer show() calls."""
+    total = strip.numPixels()
     blend_steps = max(1, int(blend_steps))
-    per_step_delay = (wait_ms / 1000.0) / blend_steps
+    pixels_per_step = max(1, int(pixels_per_step))
     target_r, target_g, target_b = _tuple_from_color(target_color)
+    start_colors = [_tuple_from_color(strip.getPixelColor(i)) for i in range(total)]
 
-    for i in range(strip.numPixels()):
-        current_r, current_g, current_b = _tuple_from_color(strip.getPixelColor(i))
-        for step in range(1, blend_steps + 1):
-            t = step / float(blend_steps)
+    for head in range(0, total + blend_steps + pixels_per_step, pixels_per_step):
+        for i in range(total):
+            progress = head - i
+            if progress <= 0:
+                t = 0.0
+            elif progress >= blend_steps:
+                t = 1.0
+            else:
+                t = progress / float(blend_steps)
+
+            start_r, start_g, start_b = start_colors[i]
             strip.setPixelColor(
                 i,
                 C(
-                    current_r + (target_r - current_r) * t,
-                    current_g + (target_g - current_g) * t,
-                    current_b + (target_b - current_b) * t,
+                    start_r + (target_r - start_r) * t,
+                    start_g + (target_g - start_g) * t,
+                    start_b + (target_b - start_b) * t,
                 ),
             )
-            strip.show()
-            time.sleep(per_step_delay)
+
+        strip.show()
+        if wait_ms > 0:
+            time.sleep(wait_ms / 1000.0)
 
 
 def clear_strip():
@@ -362,6 +373,130 @@ def spliceRunner(strip, reel_pixels=None, block_size=10, wait_ms=10, cycles=2, h
         strip.setPixelColor(idx, 0)
     strip.show()
 
+
+def reelSparkleCabinetSweep(strip, reel_pixels=None, wait_ms=25, cycles=50, reel_base=(20, 20, 20), sparkle_color=(255, 220, 120), frame_sweep=(0, 150, 255), sparkle_stride=17):
+    """Keep the reel dim with moving sparkles while a bright sweep runs the cabinet."""
+    total = strip.numPixels()
+    reel_pixels = reel_pixels or total // 2
+    reel_pixels = max(1, min(reel_pixels, total))
+    frame_start = reel_pixels
+
+    reel_base_color = _color_from_tuple(reel_base)
+    sparkle = _color_from_tuple(sparkle_color)
+    frame = _color_from_tuple(frame_sweep)
+
+    for step in range(cycles):
+        for i in range(reel_pixels):
+            strip.setPixelColor(i, reel_base_color)
+
+        for k in range(0, reel_pixels, sparkle_stride):
+            idx = (k + step) % reel_pixels
+            strip.setPixelColor(idx, sparkle)
+
+        frame_head = step % max(1, (total - frame_start))
+        for i in range(frame_start, total):
+            dist = abs((i - frame_start) - frame_head)
+            level = max(0.0, 1.0 - (dist / 24.0))
+            strip.setPixelColor(
+                i,
+                _color_from_tuple((
+                    frame_sweep[0] * level,
+                    frame_sweep[1] * level,
+                    frame_sweep[2] * level,
+                )),
+            )
+
+        strip.show()
+        time.sleep(wait_ms / 1000.0)
+
+
+def reelMeterRise(strip, reel_pixels=None, hold_ms=500, wait_ms=6, bar_color=(255, 120, 20), frame_color=(0, 100, 220), floor_color=(0, 0, 10), steps=3):
+    """Build and release an LED meter on the reel while the cabinet stays cool blue."""
+    total = strip.numPixels()
+    reel_pixels = reel_pixels or total // 2
+    reel_pixels = max(1, min(reel_pixels, total))
+    frame_start = reel_pixels
+
+    frame = _color_from_tuple(frame_color)
+    floor = _color_from_tuple(floor_color)
+    bar = _color_from_tuple(bar_color)
+
+    for i in range(frame_start, total):
+        strip.setPixelColor(i, frame)
+
+    step_size = max(1, steps)
+    for height in range(0, reel_pixels + 1, step_size):
+        for i in range(reel_pixels):
+            strip.setPixelColor(i, bar if i < height else floor)
+        strip.show()
+        time.sleep(wait_ms / 1000.0)
+
+    time.sleep(hold_ms / 1000.0)
+
+    for height in range(reel_pixels, -1, -step_size):
+        for i in range(reel_pixels):
+            strip.setPixelColor(i, bar if i < height else floor)
+        strip.show()
+        time.sleep(wait_ms / 1000.0)
+
+
+def cabinetAlternatingRails(strip, reel_pixels=None, wait_ms=35, cycles=60, reel_color=(40, 15, 5), rail_a=(0, 160, 255), rail_b=(255, 70, 0), segment=8):
+    """Alternate cabinet rail colors in chunks while reel holds a warm idle color."""
+    total = strip.numPixels()
+    reel_pixels = reel_pixels or total // 2
+    reel_pixels = max(1, min(reel_pixels, total))
+    frame_start = reel_pixels
+
+    reel = _color_from_tuple(reel_color)
+    a = _color_from_tuple(rail_a)
+    b = _color_from_tuple(rail_b)
+    segment = max(1, segment)
+
+    for step in range(cycles):
+        for i in range(reel_pixels):
+            strip.setPixelColor(i, reel)
+
+        phase = (step // 2) % 2
+        for i in range(frame_start, total):
+            group = ((i - frame_start) // segment + phase) % 2
+            strip.setPixelColor(i, a if group == 0 else b)
+
+        strip.show()
+        time.sleep(wait_ms / 1000.0)
+
+
+def reelCabinetCrossfade(strip, reel_pixels=None, wait_ms=10, steps=80, reel_a=(255, 100, 30), reel_b=(40, 0, 80), frame_a=(0, 180, 200), frame_b=(0, 30, 120)):
+    """Crossfade reel and cabinet between two palettes in opposite directions."""
+    total = strip.numPixels()
+    reel_pixels = reel_pixels or total // 2
+    reel_pixels = max(1, min(reel_pixels, total))
+    frame_start = reel_pixels
+    steps = max(2, steps)
+
+    for step in range(steps):
+        t = step / float(steps - 1)
+        reel_t = t
+        frame_t = 1.0 - t
+
+        reel_color = _color_from_tuple((
+            reel_a[0] + (reel_b[0] - reel_a[0]) * reel_t,
+            reel_a[1] + (reel_b[1] - reel_a[1]) * reel_t,
+            reel_a[2] + (reel_b[2] - reel_a[2]) * reel_t,
+        ))
+        frame_color = _color_from_tuple((
+            frame_a[0] + (frame_b[0] - frame_a[0]) * frame_t,
+            frame_a[1] + (frame_b[1] - frame_a[1]) * frame_t,
+            frame_a[2] + (frame_b[2] - frame_a[2]) * frame_t,
+        ))
+
+        for i in range(0, reel_pixels):
+            strip.setPixelColor(i, reel_color)
+        for i in range(frame_start, total):
+            strip.setPixelColor(i, frame_color)
+
+        strip.show()
+        time.sleep(wait_ms / 1000.0)
+
 # Main program logic follows:
 if __name__ == '__main__':
     # Process arguments
@@ -371,7 +506,7 @@ if __name__ == '__main__':
 
     # Create NeoPixel object with appropriate configuration.
     strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
-    # Intialize the library (must be called once before other functions).
+    # Initialize the library (must be called once before other functions).
     strip.begin()
 
     print ('Press Ctrl-C to quit.')
@@ -397,11 +532,11 @@ if __name__ == '__main__':
         ]
 
         theater_focus = [
-            (smoothWipeToColor, (ORANGE,), {'wait_ms': 8, 'blend_steps': 8}),
+            (smoothWipeToColor, (ORANGE,), {'wait_ms': 0, 'blend_steps': 12, 'pixels_per_step': 12}),
             (theaterChase, (ORANGE,), {'wait_ms': 25, 'iterations': 30}),
-            (smoothWipeToColor, (DEEP_RED,), {'wait_ms': 8, 'blend_steps': 8}),
+            (smoothWipeToColor, (DEEP_RED,), {'wait_ms': 0, 'blend_steps': 12, 'pixels_per_step': 12}),
             (theaterChase, (DEEP_RED,), {'wait_ms': 25, 'iterations': 30}),
-            (smoothWipeToColor, (DEEP_BLUE,), {'wait_ms': 8, 'blend_steps': 8}),
+            (smoothWipeToColor, (DEEP_BLUE,), {'wait_ms': 0, 'blend_steps': 12, 'pixels_per_step': 12}),
             (theaterChase, (DEEP_BLUE,), {'wait_ms': 25, 'iterations': 30}),
         ]
 
@@ -415,6 +550,10 @@ if __name__ == '__main__':
             (spinningReels, tuple(), {'lit_span': 28, 'laps': 2, 'wait_ms': 5, 'accent': (255, 200, 90), 'frame_color': (10, 10, 10)}),
             (spliceRunner, tuple(), {'block_size': 28, 'wait_ms': 7, 'cycles': 2, 'head_color': (255, 80, 20), 'frame_color': (0, 160, 255)}),
             (cabinetPulse, tuple(), {'cycles': 2, 'step_ms': 12, 'frame_color': (0, 130, 255), 'floor_color': (0, 0, 12)}),
+            (reelSparkleCabinetSweep, tuple(), {'wait_ms': 20, 'cycles': 64, 'reel_base': (15, 10, 8), 'sparkle_color': (255, 210, 140), 'frame_sweep': (0, 170, 255), 'sparkle_stride': 19}),
+            (reelMeterRise, tuple(), {'hold_ms': 450, 'wait_ms': 5, 'bar_color': (255, 140, 40), 'frame_color': (0, 100, 220), 'floor_color': (0, 0, 8), 'steps': 4}),
+            (cabinetAlternatingRails, tuple(), {'wait_ms': 30, 'cycles': 70, 'reel_color': (30, 12, 6), 'rail_a': (0, 170, 255), 'rail_b': (255, 90, 0), 'segment': 9}),
+            (reelCabinetCrossfade, tuple(), {'wait_ms': 9, 'steps': 96, 'reel_a': (255, 100, 30), 'reel_b': (30, 0, 100), 'frame_a': (0, 170, 210), 'frame_b': (0, 30, 130)}),
         ]
 
         while True:
